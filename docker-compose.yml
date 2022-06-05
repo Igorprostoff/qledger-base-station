@@ -1,0 +1,36 @@
+version: '3.3'
+
+services:
+  qbase:
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    image: qserver
+    restart: always
+    container_name: qserver
+    hostname: qserver.local
+    devices:
+      - "/dev/gpiomem:/dev/gpiomem"
+    privileged: true
+    networks:
+      - qnetwork
+
+
+  mysql:
+    image: hypriot/rpi-mysql
+    restart: always
+    container_name: mysql
+    volumes:
+      - "/home/pi:/var/lib/mysql"
+    hostname: mysql.local
+    user: root
+    environment:
+      - MYSQL_ROOT_PASSWORD=password
+      - MYSQL_DATABASE=ledger
+      - MYSQL_USER=collector
+      - MYSQL_USER=collector.Passwd.1
+    networks:
+      - qnetwork
+
+networks:
+  qnetwork:
