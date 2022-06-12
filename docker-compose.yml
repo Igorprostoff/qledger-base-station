@@ -14,23 +14,54 @@ services:
     privileged: true
     networks:
       - qnetwork
+    depends_on:
+      - postgres
 
-
-  mysql:
-    image: hypriot/rpi-mysql
+  postgres:
+    image: postgres
     restart: always
-    container_name: mysql
+    container_name: postgres
+    hostname: postgres.local
     volumes:
       - "/home/pi:/var/lib/mysql"
-    hostname: mysql.local
-    user: root
     environment:
-      - MYSQL_ROOT_PASSWORD=password
-      - MYSQL_DATABASE=ledger
-      - MYSQL_USER=collector
-      - MYSQL_USER=collector.Passwd.1
+      POSTGRES_PASSWORD: qwezxc1234
+      POSTGRES_USER: ledger_user
+      POSTGRES_DB: ledger_db
+    volumes:
+      - "/home/pi/volumes/db:/var/lib/postgresql/data"
     networks:
       - qnetwork
+
+  qapi:
+    build:
+      context: ./qapi/
+      dockerfile: Dockerfile
+    image: qapi
+    restart: always
+    container_name: qapi
+    hostname: qapi.local
+    environment:
+      API_KEY: qwezxc1234
+    networks:
+      - qnetwork
+    ports:
+      - "443:443"
+#  mysql:
+#    image: hypriot/rpi-mysql
+#    restart: always
+#    container_name: mysql
+#    volumes:
+#      - "/home/pi:/var/lib/mysql"
+#    hostname: mysql.local
+#    user: root
+#    environment:
+#      - MYSQL_ROOT_PASSWORD=password
+#      - MYSQL_DATABASE=ledger
+#      - MYSQL_USER=collector
+#      - MYSQL_USER=collector.Passwd.1
+#    networks:
+#      - qnetwork
 
 networks:
   qnetwork:
