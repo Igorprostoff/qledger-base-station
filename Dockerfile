@@ -14,4 +14,6 @@ ADD ./Findpigpio.cmake /usr/share/cmake-3.7/Modules/Findpigpio.cmake
 RUN ls /usr/include/postgresql/
 RUN cmake CMakeLists.txt && make
 USER root
-ENTRYPOINT ["/project/QServer" ]
+ADD blocks_list /project/blocks_list
+ADD devices_list /project/devices_list
+ENTRYPOINT ["sudo","/project/QServer" ]

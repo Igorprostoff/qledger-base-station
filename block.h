@@ -11,7 +11,6 @@
 #include <mbedtls/pem.h>
 #include <mbedtls/x509_crt.h>
 #include "mbedtls/sha256.h"
-#include "configparse.h"
 #include "mbedtls/aes.h"
 #include "mymap.h"
 
@@ -38,6 +37,34 @@ typedef struct
 
 
 } __attribute__((packed)) dag_block;
+
+char config_hostname[6] = "node1";
+
+char config_wifi_password[16];
+char config_wifi_ssid[9];
+
+char * config_router_password;
+char * config_router_ssid;
+
+char * privKey;
+char * pubKey;
+
+char * rootCert;
+
+long config_lora_freq;
+long config_lora_bandwidth;
+long config_lora_sf;
+long config_lora_tx_level;
+char * config_lora_key;
+
+char * httpsKey;
+
+char * httpsCert;
+
+char * currentConfig;
+
+uint8_t * devicesListBinary;
+uint8_t * blocksListBinary;
 
 uint8_t *lastBinBlock;
 int maxBlockSize = 2048;
@@ -227,6 +254,8 @@ uint64_t blockId =  (uint64_t)blockBytes[0] |
     senderName[3]=blockBytes[24+dataSize+8+par1SigSize+8+par2SigSize+3];
     senderName[4]=blockBytes[24+dataSize+8+par1SigSize+8+par2SigSize+4];
     senderName[5]=blockBytes[24+dataSize+8+par1SigSize+8+par2SigSize+5];
+    printf("SENDER NAME = %s, or in bytes: %i %i %i %i %i %i \n", senderName, 
+    senderName[0], senderName[1], senderName[2], senderName[3], senderName[4], senderName[5]);
    
     if (messageType == 0){
         localPubkey = malloc(dataSize);
@@ -270,37 +299,37 @@ uint64_t blockId =  (uint64_t)blockBytes[0] |
         free(errortxt);
 
         localPubkey[dataSize-1] = 0;
-        printf("ADDRESS OF MAP IN SET: 0x%x\n", &devices_list);
-        printf("ADDRESS OF senderName IN SET: 0x%x\n", senderName);
-        printf("ADDRESS OF LOCAL PUB KEY IN SET: 0x%x\n", localPubkey);
+        //printf("ADDRESS OF MAP IN SET: 0x%x\n", &devices_list);
+        //printf("ADDRESS OF senderName IN SET: 0x%x\n", senderName);
+        //printf("ADDRESS OF LOCAL PUB KEY IN SET: 0x%x\n", localPubkey);
         map_set(&devices_list, senderName, localPubkey);
 
         
         printf("NEW DEVICE IS NOW IN LIST: %s\n", senderName);
 
-        printf("TEST OF MAP_GET FUNCTION AFTER SET: %s\n", map_get(&devices_list, senderName));
+        //printf("TEST OF MAP_GET FUNCTION AFTER SET: %s\n", map_get(&devices_list, senderName));
 
     }
     else
     {
         localPubkey = map_get(&devices_list, senderName);
-        printf("ADDRESS OF MAP IN GET: 0x%x\n", &devices_list);
+        /*printf("ADDRESS OF MAP IN GET: 0x%x\n", &devices_list);
         printf("ADDRESS OF senderName IN GET: 0x%x\n", senderName);
         printf("ADDRESS OF LOCAL PUB KEY IN GET: 0x%x\n", localPubkey);
-        
+        */
         
         if (localPubkey==0x0)
         {
-            printf("DEVICE IS NOT IN LIST");
+            printf("\nDEVICE IS NOT IN LIST");
             return 0;
         }
         
-        printf("reading 100 bytes of cert: \n");
+        /*printf("reading 100 bytes of cert: \n");
         for (size_t i = 0; i < 100; i++)
         {
             printf("%c",localPubkey[i]);
         }
-        printf("\n");
+        printf("\n");*/
         
     }
 
@@ -312,7 +341,7 @@ uint64_t blockId =  (uint64_t)blockBytes[0] |
                             (uint64_t)blockBytes[24+dataSize+8+par1SigSize+8+par2SigSize+6+5]<<40 |
                             (uint64_t)blockBytes[24+dataSize+8+par1SigSize+8+par2SigSize+6+6]<<48 |
                             (uint64_t)blockBytes[24+dataSize+8+par1SigSize+8+par2SigSize+6+7]<<56;
-    printf("SIGSIZE = %lli \n", sigSize);
+    printf("\nSIGSIZE = %lli \n", sigSize);
      if(sigSize>255){
         return 0;
     }
@@ -365,20 +394,30 @@ uint64_t blockId =  (uint64_t)blockBytes[0] |
     {
         printf("%c",localPubkey[i]);
     }
-    printf("\n");
+    printf("\nlast byte of pubkey %i", localPubkey[strlen(localPubkey)]);
+    //printf("\nLEN OF PUBKEY %i",strlen(localPubkey));
     
-    unsigned int err = mbedtls_x509_crt_parse(&pubKeymbtls, (unsigned char*)localPubkey, strlen(pubKey)+1);
+    unsigned int err = mbedtls_x509_crt_parse(&pubKeymbtls, (unsigned char*)localPubkey, strlen(localPubkey)+1);
     
     if (err!=0){
         mbedtls_strerror(err, errortxt, 128);
-        printf("ERR DURING mbedtls_x509_crt_parse, %s",errortxt);
+        printf("\nERR DURING mbedtls_x509_crt_parse, %s",errortxt);
+        return 0;
+    }else{
+        printf("\nmbedtls_x509_crt_parse OK");
+
     }
     //printf("tag", "ERR parse: %hx, %s", err, errortxt);
      err = mbedtls_pk_setup(&pubKeymbtls, mbedtls_pk_info_from_type(MBEDTLS_PK_ECDSA));
      if (err!=0){
         mbedtls_strerror(err, errortxt, 128);
-        printf("ERR DURING mbedtls_pk_setup, %s",errortxt);
-    } 
+        printf("\nERR DURING mbedtls_pk_setup, %s",errortxt);
+        return 0;
+
+    } else{
+        printf("\nmbedtls_pk_setup OK");
+
+    }
     //printf("tag", "ERR setup: %hx, %s", err, errortxt);
 
     //printf("tag", "init cool");

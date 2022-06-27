@@ -5,7 +5,9 @@ import (
 	"html/template"
 	"log"
 	"net/http"
-
+	"net"
+	"os"
+	"fmt"
 )
 
 type tableLine struct{
@@ -110,10 +112,45 @@ func handler(w http.ResponseWriter, r *http.Request){
 	tmpl, _ := template.ParseFiles("login.html")
     tmpl.Execute(w, nil)
 }
+var l net.Listener
 
+func handleRequest(conn net.Conn) {
+	// Make a buffer to hold incoming data.
+	buf := make([]byte, 1024)
+	// Read the incoming connection into the buffer.
+	_, err := conn.Read(buf)
+	if err != nil {
+	  fmt.Println("Error reading:", err.Error())
+	}
+	// Send a response back to person contacting us.
+	conn.Write([]byte("Message received."))
+	// Close the connection when you're done with it.
+	conn.Close()
+  }
+
+
+func listening() {
+	for {
+        // Listen for an incoming connection.
+        conn, err := l.Accept()
+        if err != nil {
+            fmt.Println("Error accepting: ", err.Error())
+            os.Exit(1)
+        }
+        // Handle connections in a new goroutine.
+        go handleRequest(conn)
+    }
+}
 func main()  {
 	log.Println("WELCOME TO QLedger webapp")
 	http.HandleFunc("/", handler)
-	
+	l, err := net.Listen("tcp", "localhost:444")
+    if err != nil {
+        fmt.Println("Error listening:", err.Error())
+        os.Exit(1)
+    }
+    defer l.Close()
+
+	go listening()
 	log.Fatal(http.ListenAndServe(":443", nil))
 }

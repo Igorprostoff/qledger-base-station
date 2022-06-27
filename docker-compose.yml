@@ -1,7 +1,7 @@
 version: '3.3'
 
 services:
-  qbase:
+  qserver:
     build:
       context: ./
       dockerfile: Dockerfile
@@ -9,29 +9,10 @@ services:
     restart: always
     container_name: qserver
     hostname: qserver.local
-    devices:
-      - "/dev/gpiomem:/dev/gpiomem"
     privileged: true
     networks:
       - qnetwork
-    depends_on:
-      - postgres
 
-  postgres:
-    image: postgres
-    restart: always
-    container_name: postgres
-    hostname: postgres.local
-    volumes:
-      - "/home/pi:/var/lib/mysql"
-    environment:
-      POSTGRES_PASSWORD: qwezxc1234
-      POSTGRES_USER: ledger_user
-      POSTGRES_DB: ledger_db
-    volumes:
-      - "/home/pi/volumes/db:/var/lib/postgresql/data"
-    networks:
-      - qnetwork
 
   qapi:
     build:

@@ -11,31 +11,10 @@
 #include <mbedtls/pem.h>
 #include <mbedtls/x509_crt.h>
 #include "mbedtls/sha256.h"
+#include "mymap.h"
+#include "block.h"
 
-char config_hostname[6] = "node1";
 
-char config_wifi_password[16];
-char config_wifi_ssid[9];
-
-char * config_router_password;
-char * config_router_ssid;
-
-char * privKey;
-char * pubKey;
-
-char * rootCert;
-
-long config_lora_freq;
-long config_lora_bandwidth;
-long config_lora_sf;
-long config_lora_tx_level;
-char * config_lora_key;
-
-char * httpsKey;
-
-char * httpsCert;
-
-char * currentConfig;
 
 int parseHostname(){
     
@@ -259,6 +238,105 @@ int parseLoraTXPower(){
 }
 
 
+int parseDevicesList(){
+    
+    uint64_t numOfDevices =  (uint64_t)devicesListBinary[0] |
+                    (uint64_t)devicesListBinary[1]<<8 |
+                    (uint64_t)devicesListBinary[2]<<16 | 
+                    (uint64_t)devicesListBinary[3]<<24 |
+                    (uint64_t)devicesListBinary[4]<<32 |
+                    (uint64_t)devicesListBinary[5]<<40 |
+                    (uint64_t)devicesListBinary[6]<<48 |
+                    (uint64_t)devicesListBinary[7]<<56;
+    uint64_t passedBytes = 8;
+    printf("NUM OF DEVICES %lli",numOfDevices);
+    for (size_t i = 0; i < numOfDevices; i++)
+    {
+        char deviceName[6] = {
+            devicesListBinary[passedBytes],
+            devicesListBinary[passedBytes+1],
+            devicesListBinary[passedBytes+2],
+            devicesListBinary[passedBytes+3],
+            devicesListBinary[passedBytes+4],
+            devicesListBinary[passedBytes+5]
+        };
+        passedBytes+=6;
+
+        printf("\nDEVICE NAME %s",deviceName);
+
+        int pubKeyLen = (devicesListBinary[passedBytes]<<8) + devicesListBinary[passedBytes+1];
+        printf("\npubKeyLen %i\n",pubKeyLen);
+
+        passedBytes+=2;
+        char * devicepubKey = malloc(pubKeyLen+1);
+
+        memcpy(devicepubKey, devicesListBinary+passedBytes, pubKeyLen);
+        devicepubKey[pubKeyLen] = 0;
+        passedBytes+=pubKeyLen;
+        for(int i =0; i < pubKeyLen+1; i++)
+            printf("%c", devicepubKey[i]);
+        //printf("\nSETTING DEVICE NAME %s, \n WITH KEY %s", deviceName, devicepubKey);
+        map_set(&devices_list, deviceName, devicepubKey);
+    }
+    
+    
+    return 1;
+}
+
+
+int parseBlockSignatures(){
+    
+    uint64_t numOfBlocks =  (uint64_t)blocksListBinary[0] |
+                    (uint64_t)blocksListBinary[1]<<8 |
+                    (uint64_t)blocksListBinary[2]<<16 | 
+                    (uint64_t)blocksListBinary[3]<<24 |
+                    (uint64_t)blocksListBinary[4]<<32 |
+                    (uint64_t)blocksListBinary[5]<<40 |
+                    (uint64_t)blocksListBinary[6]<<48 |
+                    (uint64_t)blocksListBinary[7]<<56;
+    uint64_t passedBytes = 8;
+    blockNum = numOfBlocks;
+    blocks = malloc(numOfBlocks * sizeof * blocks);
+
+    printf("PARSE BLOCKS SIGS NUM OF blocks %lli\n",numOfBlocks);
+    for (size_t i = 0; i < numOfBlocks; i++)
+    {
+
+        uint8_t sigLen = blocksListBinary[passedBytes];
+        printf("PARSE BLOCKS SIGS sigLen %i\n",sigLen);
+
+        passedBytes++;
+        uint8_t * sig = malloc(sigLen);
+
+        memcpy(sig, blocksListBinary+passedBytes, sigLen);
+        passedBytes+=sigLen;
+        printf("PARSE BLOCKS SIGS sigNature %s\n",sig);
+        
+       /* blocks[i].blockId = 0;
+
+        blocks[i].timestamp = 0;
+
+        blocks[i].dataSize = ;
+        blocks[i].data = {0};
+    
+        blocks[i].par1SigSize = 0;
+        blocks[i].par1Sig = {0};
+
+        blocks[i].par2SigSize = 0;
+        blocks[i].par2Sig = {0};
+
+        blocks[i].mac = {0,0,0,0,0,0};*/
+
+
+        blocks[i].signature=sig;
+        blocks[i].sigSize=(uint64_t)sigLen;
+
+    }
+    
+    return 1;
+}
+
+
 int parseLoraKey(){
     char * posStr = strstr(currentConfig, "lora_encryption_key '");
     if(posStr==NULL){
@@ -314,14 +392,14 @@ int parseLoraKey(){
     
     memcpy(config_lora_key, lora_sha256_key, 32);
 
-    /*printf("New lora key:");
+    printf("New lora key:");
 
         for (size_t i = 0; i < 32; i++)
         {
             printf("%x",config_lora_key[i]);
         }
     printf("\n");
-    printf("LoRa key address: 0x%x\n", config_lora_key);*/
+    printf("LoRa key address: 0x%x\n", config_lora_key);
     
     return 1;
 }

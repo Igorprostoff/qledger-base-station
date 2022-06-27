@@ -2,34 +2,16 @@
 #include "block.h"
 #include "configparse.h"
 #include "/usr/include/postgresql/libpq-fe.h"
-#define UNUSED(x) (void)(x)
+#include <arpa/inet.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <netdb.h>
+
 int lastBinBlockLen = 0;
 char * currentConfig = 0;
 
-static PGconn* conn = NULL;
-static PGresult* res = NULL;
-static void processNotice(void *arg, const char *message)
-{
-    UNUSED(arg);
-    UNUSED(message);
-
-    // do nothing
-}
-
-static void
-terminate(int code)
-{
-    if(code != 0)
-        fprintf(stderr, "%s\n", PQerrorMessage(conn));
-
-    if(res != NULL)
-        PQclear(res);
-
-    if(conn != NULL)
-        PQfinish(conn);
-
-    exit(code);
-}
 
 void rx_f(rxData *rx){
     printf("rx done \n");
@@ -49,20 +31,20 @@ void rx_f(rxData *rx){
     //char str[100];
     //int lastRSSI = lora_packet_rssi();
     //int snlevel = lora_packet_snr();
-    printf("Received:");
-    for (int i = 0; i < x; i++)
-        printf("%i ", buf[i]);
+    printf("Received block part");
+   // for (int i = 0; i < x; i++)
+    //    printf("%i ", buf[i]);
     
    printf("\nData Size = %i,  PACKET NUM %i OF %i \n",rx->size, rx->buf[0] >> 4, rx->buf[0] & 15);
-    /*ssd1306_clear_screen(&dev, false);
-    sprintf(str, "Num: %i", buf[x - 1]);
-    ssd1306_display_text(&dev, 0, str, strlen(str), false);
-    sprintf(str, "RSSI: %i dBm", lastRSSI);
-    ssd1306_display_text(&dev, 1, str, strlen(str), false);
-    sprintf(str, "S/N: %i", snlevel);
-    ssd1306_display_text(&dev, 2, str, strlen(str), false);
-    sprintf(str, "Size: %i", x);
-    ssd1306_display_text(&dev, 3, str, strlen(str), false);*/
+    //ssd1306_clear_screen(&dev, false);
+    //sprintf(str, "Num: %i", buf[x - 1]);
+    //ssd1306_display_text(&dev, 0, str, strlen(str), false);
+    //sprintf(str, "RSSI: %i dBm", lastRSSI);
+    //ssd1306_display_text(&dev, 1, str, strlen(str), false);
+    //sprintf(str, "S/N: %i", snlevel);
+    //ssd1306_display_text(&dev, 2, str, strlen(str), false);
+    //sprintf(str, "Size: %i", x);
+    //ssd1306_display_text(&dev, 3, str, strlen(str), false);
     //lora_send_packet((uint8_t*)buf, x);
     //printf("1\n");
     //printf("2\n");
@@ -82,7 +64,7 @@ void rx_f(rxData *rx){
         {
             printf("%x",config_lora_key[i]);
         }
-        printf("\n");
+       // printf("\n");
 
         int err = mbedtls_aes_setkey_dec(&aes, (unsigned char *)config_lora_key, 256);
         if(err!=0){
@@ -90,7 +72,7 @@ void rx_f(rxData *rx){
         }
         unsigned char iv[] = {0xff, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
                                                 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f};
-        /*printf("cbc encrypted | ");
+        printf("\ncbc encrypted | ");
         for (size_t i = 0; i < lastBinBlockLen; i++)
         {
             if (lastBinBlock[i]<16)
@@ -98,18 +80,18 @@ void rx_f(rxData *rx){
                printf("0");
             }
             
-            printf("%x ",lastBinBlock[i]);
+           printf("%x ",lastBinBlock[i]);
         }
-        printf("\n");*/
+        printf("\n");
         unsigned char * decrypt_output = malloc(lastBinBlockLen);
 
-        /*printf("iv empty | ");
-        for (size_t i = 0; i < 16; i++)
-        {
-            printf("%x ",iv[i]);
-        }
-        printf("\n");*/
-        printf("RECIEVE DECRYPT | LEN OF DATA: %i\n", lastBinBlockLen);
+        //printf("iv empty | ");
+        //for (size_t i = 0; i < 16; i++)
+        //{
+        //    printf("%x ",iv[i]);
+        //}
+        //printf("\n");
+        //printf("RECIEVE DECRYPT | LEN OF DATA: %i\n", lastBinBlockLen);
         err = mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_DECRYPT,
                                          lastBinBlockLen, iv, lastBinBlock, decrypt_output);
         if(err!=0){
@@ -122,20 +104,51 @@ void rx_f(rxData *rx){
             printf("%x ",decrypt_output[i]);
         }
         printf("\n");
-        lastBinBlockLen = 0;
+        
         free(lastBinBlock);
         lastBinBlock = decrypt_output;
-        if (verifyBlock(lastBinBlock))
+        if (!verifyBlock(lastBinBlock))
         {
-            printf("CURRENT BLOCK NUM = %i\n\n", blockNum);
             blocks = realloc(blocks, (blockNum + 1) * sizeof *blocks);
             blocks[blockNum] = blockFromBytes(lastBinBlock);
             blockNum++;
+            int sockfd, portno, n;
+            struct sockaddr_in serv_addr;
+            struct hostent *server;
+            char buffer[256];
+            portno = 444;
+            sockfd = socket(AF_INET, SOCK_STREAM, 0);
+            if (sockfd < 0) 
+                error("ERROR opening socket");
+            server = gethostbyname("qapi.local");
+            if (server == NULL) {
+                fprintf(stderr,"ERROR, no such host\n");
+                exit(0);
+            }
+            bzero((char *) &serv_addr, sizeof(serv_addr));
+            serv_addr.sin_family = AF_INET;
+            bcopy((char *)server->h_addr, 
+                (char *)&serv_addr.sin_addr.s_addr,
+                server->h_length);
+            serv_addr.sin_port = htons(portno);
+            if (connect(sockfd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) < 0) 
+                error("ERROR connecting");            
+            n = write(sockfd, lastBinBlock, lastBinBlockLen);
+            if (n < 0) 
+                error("ERROR writing to socket");
+            bzero(buffer,256);
+            n = read(sockfd, buffer, 255);
+            if (n < 0) 
+                error("ERROR reading from socket");
+            printf("%s\n", buffer);
+            close(sockfd);
+    
         }
         else
         {
             printf("BLOCK NOT VERIFIED\n");
         }
+        lastBinBlockLen = 0;
         mbedtls_aes_free(&aes);
 
     }    
@@ -143,6 +156,8 @@ void rx_f(rxData *rx){
 }
 
 int main(){
+
+    printf("WELCOME TO QSERVER\n");
     FILE *fptr;
     
     map_init(&devices_list);
@@ -163,38 +178,61 @@ int main(){
     fclose (fptr);
 
     currentConfig[length-1]=0;
-    printf("START OF CONFIG PRASE");
+
+    if ((fptr = fopen("devices_list","rb")) == NULL){
+       printf("Error! opening file");
+       exit(1);
+    }
+    
+    fseek (fptr, 0, SEEK_END);
+    length = ftell (fptr);
+    fseek (fptr, 0, SEEK_SET);
+    devicesListBinary = malloc (length);
+    if (devicesListBinary)
+    {
+        fread(devicesListBinary, 1, length, fptr);
+    }
+    fclose (fptr);
+
+    devicesListBinary[length-1]=0;
+
+
+
+    if ((fptr = fopen("blocks_list","rb")) == NULL){
+       printf("Error! opening file");
+       exit(1);
+    }
+    
+    fseek (fptr, 0, SEEK_END);
+    length = ftell (fptr);
+    fseek (fptr, 0, SEEK_SET);
+    blocksListBinary = malloc (length);
+    if (blocksListBinary)
+    {
+        fread(blocksListBinary, 1, length, fptr);
+    }
+    fclose (fptr);
+
+    blocksListBinary[length-1]=0;
+
+
+    printf("START OF CONFIG PRASE\n");
     //printf("CONFIG %s",currentConfig);
 
-    /*if(parseTimestamp()){
+    //if(parseTimestamp()){
        // printf("parseTimestamp\tOK\n");
-    }else
-    {
-        printf("parseTimestamp\tERROR\n");
-    }*/
+    //}else
+    //{
+    //    printf("parseTimestamp\tERROR\n");
+   // }
 
     
 
-    if(parseRootCert()==1){
+    if(parseRootCert()){
         printf("parseRootCert\tOK\n");
     }else
     {
         printf("parseRootCert\tERROR\n");
-    }
-
-    
-   if(parseECDSACert()){
-        printf("parseECDSACert\tOK\n");
-    }else
-    {
-        printf("parseECDSACert\tERROR\n");
-    }
-    
-    if(parseECDSAKey()){
-        printf("parseECDSAKey\tOK\n");
-    }else
-    {
-        printf("parseECDSAKey\tERROR\n");
     }
 
     if(parseHostname()){
@@ -202,22 +240,6 @@ int main(){
     }else
     {
         printf("parseHostname\tERROR\n");
-    }
-
-    
-
-    if(parseRouterSSID()){
-        printf("parseRouterSSID\tOK\n");
-    }else
-    {
-        printf("parseRouterSSID\tERROR\n");
-    }
-
-    if(parseRouterPass()){
-        printf("parseRouterPass\tOK\n");
-    }else
-    {
-        printf("parseRouterPass\tERROR\n");
     }
 
     if(parseLoraFreq()){
@@ -255,27 +277,41 @@ int main(){
         printf("parseLoraKey\tERROR\n");
     }
 
-     if(parseHTTPSCert()){
-        printf("parseHTTPSCERT\tOK\n");
-    }else
-    {
-        printf("parseHTTPSCERT\tERROR\n");
-    }
+   //  if(parseHTTPSCert()){
+     //   printf("parseHTTPSCERT\tOK\n");
+    //}else
+    //{
+    //    printf("parseHTTPSCERT\tERROR\n");
+    //}
 
-    if(parseHTTPSKey()){
-        printf("parseHTTPSKey\tOK\n");
-    }else
-    {
-        printf("parseHTTPSKey\tERROR\n");
-    }
+    //if(parseHTTPSKey()){
+    //    printf("parseHTTPSKey\tOK\n");
+    //}else
+    //{
+    //    printf("parseHTTPSKey\tERROR\n");
+    //}
 
-    /*if(parseDeviceType()){
+    //if(parseDeviceType()){
        // printf("parseHTTPSKey\tOK\n");
+    //}else
+    //{
+     //   printf("parseDeviceType\tERROR\n");
+    //}
+
+    if(parseBlockSignatures()){
+        printf("parseBlockSignatures\tOK\n");
     }else
     {
-        printf("parseDeviceType\tERROR\n");
-    }*/
-    char rxbuf[255];
+       printf("parseBlockSignatures\tERROR\n");
+    }
+
+    if(parseDevicesList()){
+        printf("parseDevicesList\tOK\n");
+    }else
+    {
+       printf("parseDevicesList\tERROR\n");
+    }
+   char rxbuf[255];
     LoRa_ctl modem;
     lastBinBlock = malloc(maxBlockSize);
     //See for typedefs, enumerations and there values in LoRa.h header file
@@ -299,36 +335,18 @@ int main(){
     modem.eth.syncWord = 0x12;
     //For detail information about SF, Error Coding Rate, Explicit header, Bandwidth, AGC, Over current protection and other features refer to sx127x datasheet https://www.semtech.com/uploads/documents/DS_SX1276-7-8-9_W_APP_V5.pdf
 
-    LoRa_begin(&modem);
-    
+     
     blocks = malloc(1 * sizeof *blocks);
+
+   
+    LoRa_begin(&modem);
+
     LoRa_receive(&modem);
 
-    int libpq_ver = PQlibVersion();
-    printf("Version of libpq: %d\n", libpq_ver);
-
-    conn = PQconnectdb("user=eax password= host=127.0.0.1 dbname=eax");
-    if(PQstatus(conn) != CONNECTION_OK)
-        terminate(1);
-
-    PQsetNoticeProcessor(conn, processNotice, NULL);
-
-    int server_ver = PQserverVersion(conn);
-    char *user = PQuser(conn);
-    char *db_name = PQdb(conn);
-
-    printf("Server version: %d\n", server_ver);
-    printf("User: %s\n", user);
-    printf("Database name: %s\n", db_name);
-
-    res = PQexec(conn, "CREATE TABLE IF NOT EXISTS ledger_blocks "
-            "(id SERIAL PRIMARY KEY, author VARCHAR(64), "
-            "data VARCHAR(64), timestamp TIMESTAMP)");
-    if(PQresultStatus(res) != PGRES_COMMAND_OK)
-        terminate(1);
-    while(1){
+    while(LoRa_get_op_mode(&modem) != SLEEP_MODE){
         sleep(1);
     }
+
     printf("end\n");
     LoRa_end(&modem);
 }
